@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知乎热榜选题面板</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --line: #e3e6ea;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --up: #d92c2c;
+    --down: #0f9d58;
+    --accent: #2563eb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { margin: 0; font-size: 17px; }
+  #status { color: var(--muted); font-size: 13px; }
+  main { padding: 16px 20px 40px; }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  input[type=search] {
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
+    width: 280px; font-size: 13px; background: #fff;
+  }
+  button {
+    padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fff; cursor: pointer; font-size: 13px; color: var(--text);
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  .table-wrap {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    overflow: auto; max-height: calc(100vh - 150px);
+  }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 7px 10px; text-align: right; white-space: nowrap; }
+  th:nth-child(2), td:nth-child(2) { text-align: left; white-space: normal; min-width: 360px; }
+  thead th {
+    position: sticky; top: 0; background: #f0f2f5; font-weight: 600; font-size: 13px;
+    border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; z-index: 1;
+  }
+  thead th.idx { cursor: default; }
+  tbody tr { border-bottom: 1px solid #f1f3f5; cursor: pointer; }
+  tbody tr:hover { background: #f7fbff; }
+  tbody tr.active { background: #e8f1ff; }
+  .num { font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: var(--muted); }
+  .tag {
+    display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px;
+    background: #fff1f0; color: var(--up); margin-left: 6px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* 右侧详情抽屉 */
+  #detail {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(1080px, 78vw);
+    background: var(--panel); border-left: 1px solid var(--line);
+    box-shadow: -8px 0 24px rgba(0,0,0,.08); transform: translateX(100%);
+    transition: transform .18s ease; display: flex; flex-direction: column; z-index: 10;
+  }
+  #detail.open { transform: translateX(0); }
+  #detail .head {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  #detail .head h2 { margin: 0; font-size: 15px; flex: 1; line-height: 1.4; }
+  #detail .body { overflow: auto; flex: 1; padding: 8px 16px 24px; }
+  #detail .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  #detail table { font-size: 13px; }
+  #detail th, #detail td { padding: 5px 8px; }
+  #detail thead th { background: #f0f2f5; }
+  .empty { padding: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>知乎热榜选题面板</h1>
+  <span id="status">加载中…</span>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="搜索标题关键字…">
+    <button id="refresh">刷新</button>
+    <button id="fetch-now">立即抓取一次</button>
+    <span class="hint">默认按峰值热度排序；点表头可换排序列，点任意一行看近 3 日全部采集数据</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="daily">
+      <thead>
+        <tr>
+          <th class="idx">#</th>
+          <th class="idx">热榜话题</th>
+          <th data-key="peak_heat">峰值热度</th>
+          <th data-key="current_heat">当前热度</th>
+          <th data-key="current_rank">本次排名</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<aside id="detail">
+  <div class="head">
+    <h2 id="d-title">—</h2>
+    <button id="d-close">关闭 ✕</button>
+  </div>
+  <div class="body">
+    <div class="meta" id="d-meta"></div>
+    <table id="detail-table">
+      <thead>
+        <tr>
+          <th>采集时间</th>
+          <th>排名</th>
+          <th>排名Δ</th>
+          <th>热度</th>
+          <th>热度Δ</th>
+          <th>变化率</th>
+          <th>回答数</th>
+          <th>回答Δ</th>
+          <th>关注数</th>
+          <th>关注Δ</th>
+          <th>新上榜</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</aside>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+let TOPICS = [];
+let SORT_KEY = 'peak_heat';
+let SORT_DESC = true;
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// 热度以「万」为单位存储：>=1 显示成 xx万，<1 显示成原始条数
+function fmtHeat(wan) {
+  if (wan === null || wan === undefined) return '-';
+  if (wan >= 1) return (Math.round(wan * 10) / 10) + '万';
+  return String(Math.round(wan * 10000));
+}
+function fmtInt(v) { return (v === null || v === undefined) ? '-' : String(v); }
+function fmtDelta(v, suffix = '') {
+  if (v === null || v === undefined) return '<span class="flat">-</span>';
+  if (v === 0) return '<span class="flat">0</span>';
+  const cls = v > 0 ? 'up' : 'down';
+  const sign = v > 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${v}${suffix}</span>`;
+}
+function fmtPct(v) {
+  if (v === null || v === undefined) return '<span class="flat">-</span>';
+  if (v === 0) return '<span class="flat">0.0%</span>';
+  const cls = v > 0 ? 'up' : 'down';
+  return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
+}
+
+async function loadStatus() {
+  const s = await (await fetch('/api/status')).json();
+  const latest = s.latest_fetched_at ? s.latest_fetched_at.replace('T', ' ') : '尚未采集';
+  $('#status').textContent =
+    `最近采集 ${latest} · 窗口已采 ${s.window_filled}/${s.window_size} · 累计话题 ${s.topic_total} 个 / 观测 ${s.observation_total} 条`;
+}
+
+async function loadTopics() {
+  TOPICS = (await (await fetch('/api/topics')).json()).topics || [];
+  render();
+  await loadStatus();
+}
+
+function render() {
+  const kw = $('#search').value.trim().toLowerCase();
+  const rows = TOPICS
+    .filter((t) => !kw || t.title.toLowerCase().includes(kw))
+    .sort((a, b) => {
+      const av = a[SORT_KEY], bv = b[SORT_KEY];
+      const an = av === null || av === undefined, bn = bv === null || bv === undefined;
+      if (an && bn) return 0;
+      if (an) return 1;          // 空值永远排最后
+      if (bn) return -1;
+      return SORT_DESC ? bv - av : av - bv;
+    });
+
+  $('#daily tbody').innerHTML = rows.map((t, i) => `
+    <tr data-qid="${t.question_id}">
+      <td class="num flat">${i + 1}</td>
+      <td>${esc(t.title)}${t.current_rank === null ? '<span class="tag">已跌出</span>' : ''}</td>
+      <td class="num"><strong>${fmtHeat(t.peak_heat)}</strong></td>
+      <td class="num">${t.current_heat === null ? '<span class="flat">-</span>' : fmtHeat(t.current_heat)}</td>
+      <td class="num">${fmtInt(t.current_rank)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">还没有数据，点「立即抓取一次」</td></tr>';
+}
+
+async function openDetail(qid) {
+  document.querySelectorAll('#daily tbody tr').forEach((tr) =>
+    tr.classList.toggle('active', tr.dataset.qid === String(qid)));
+
+  const data = await (await fetch(`/api/topics/${qid}`)).json();
+  $('#d-title').textContent = data.topic ? data.topic.title : '—';
+  // 兜底：万一后端没给 url，就用 id 拼网页地址（绝不能退回 api.zhihu.com，那是 JSON 报错页）
+  const link = data.topic
+    ? (data.topic.url || `https://www.zhihu.com/question/${data.topic.question_id}`)
+    : '#';
+  $('#d-meta').innerHTML = data.topic
+    ? `共 ${data.rows.length} 次采集 · 按时间倒序 · <a href="${esc(link)}" target="_blank" rel="noopener">打开知乎原问题</a>`
+    : '';
+
+  $('#detail-table tbody').innerHTML = (data.rows || []).map((r) => `
+    <tr>
+      <td>${esc(r.fetched_at.replace('T', ' '))}</td>
+      <td class="num">${fmtInt(r.rank)}</td>
+      <td class="num">${fmtDelta(r.delta_rank)}</td>
+      <td class="num">${fmtHeat(r.heat_wan)}</td>
+      <td class="num">${fmtDelta(r.delta_heat, '万')}</td>
+      <td class="num">${fmtPct(r.heat_pct)}</td>
+      <td class="num">${fmtInt(r.answer_count)}</td>
+      <td class="num">${fmtDelta(r.delta_answer)}</td>
+      <td class="num">${fmtInt(r.follower_count)}</td>
+      <td class="num">${fmtDelta(r.delta_follower)}</td>
+      <td>${r.debut ? '<span class="up">是</span>' : '<span class="flat">否</span>'}</td>
+    </tr>`).join('') || '<tr><td colspan="11" class="empty">该话题在近 3 日窗口内没有采集记录</td></tr>';
+
+  $('#detail').classList.add('open');
+}
+
+$('#daily tbody').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr');
+  if (tr && tr.dataset.qid) openDetail(tr.dataset.qid);
+});
+
+$('#daily thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th');
+  if (!th || !th.dataset.key) return;
+  if (SORT_KEY === th.dataset.key) SORT_DESC = !SORT_DESC;
+  else { SORT_KEY = th.dataset.key; SORT_DESC = true; }
+  render();
+});
+
+$('#d-close').addEventListener('click', () => $('#detail').classList.remove('open'));
+$('#search').addEventListener('input', render);
+$('#refresh').addEventListener('click', loadTopics);
+$('#fetch-now').addEventListener('click', async () => {
+  $('#fetch-now').disabled = true;
+  $('#fetch-now').textContent = '抓取中…';
+  const r = await (await fetch('/api/fetch?force=true', { method: 'POST' })).json();
+  $('#fetch-now').textContent = r.state === 'ok' ? `抓到 ${r.count} 条` : `状态：${r.state}`;
+  setTimeout(() => { $('#fetch-now').disabled = false; $('#fetch-now').textContent = '立即抓取一次'; }, 2000);
+  await loadTopics();
+});
+
+loadTopics();
+setInterval(loadTopics, 5 * 60 * 1000);
+</script>
+</body>
+</html>
